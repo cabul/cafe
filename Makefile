@@ -1,17 +1,17 @@
 CC = gcc
-CFLAGS = -Wall -pedantic -std=c11
+CFLAGS = -Wall -pedantic -std=gnu99
 
 .PHONY: all clean
 
 all:
 
-test: test.c cafe.h
-	$(CC) $(CFLAGS) $< -o $@
-
-build/%.o: src/%.c
-	@echo "+ compiling $<"
+build/%: src/%.c test/%.c
 	@mkdir -p $(@D)
-	$(CC) $(CLFAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -Itest -Isrc -o $@ $^
+
+test/%: build/%
+	@$<
+
 
 clean:
 	rm -rf build

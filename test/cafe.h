@@ -3,6 +3,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #ifndef CAFE_MAX_HOOKS
 #define CAFE_MAX_HOOKS 16
@@ -14,7 +15,7 @@
 
 static int cafe_status = 0;
 static int cafe_level = 0;
-static int cafe_indent = 2;
+static int cafe_spaces = 2;
 
 static int cafe_passing = 0;
 static int cafe_failing = 0;
@@ -44,9 +45,20 @@ static char *cafe_helper;
 
 #define cafe_print(...)                                                        \
     do {                                                                       \
-        printf("%*s", cafe_level *cafe_indent + cafe_indent, "");              \
+        printf("%*s", cafe_level *cafe_spaces + cafe_spaces, "");              \
         printf(__VA_ARGS__);                                                   \
     } while (0)
+
+#ifdef CAFE_COLORS
+#define cafe_term(esc)                                                         \
+    do {                                                                       \
+        if (isatty(fileno(stdout))) {                                          \
+            printf(esc);                                                       \
+        }                                                                      \
+    } while (0)
+#else
+#define cafe_term(esc)
+#endif
 
 #define Assert(cond)                                                           \
     if (!(cond)) {                                                             \
@@ -56,6 +68,7 @@ static char *cafe_helper;
     }
 
 #define Describe(message, block)                                               \
+    ;                                                                          \
     cafe_print(message "\n");                                                  \
     cafe_be_num_hooks[cafe_level + 1] = cafe_be_num_hooks[cafe_level];         \
     cafe_ae_num_hooks[cafe_level + 1] = cafe_ae_num_hooks[cafe_level];         \
@@ -96,13 +109,17 @@ static char *cafe_helper;
         block                                                                  \
     } while (0);                                                               \
     if (cafe_status != 0) {                                                    \
+        cafe_term("\033[1;31m");                                               \
         cafe_print("✗ " message "\n");                                         \
+        cafe_term("\033[0m");                                                  \
         ++cafe_failing;                                                        \
         ++cafe_level;                                                          \
         cafe_print("Assertion '%s' failed\n", cafe_helper);                    \
         --cafe_level;                                                          \
     } else {                                                                   \
+        cafe_term("\033[1;32m");                                               \
         cafe_print("✓ " message "\n");                                         \
+        cafe_term("\033[0m");                                                  \
         ++cafe_passing;                                                        \
     }                                                                          \
     for (int cafe_i = cafe_ae_num_hooks[cafe_level] - 1; cafe_i >= 0;          \
@@ -113,10 +130,10 @@ static char *cafe_helper;
     }
 
 #define Pending(message)                                                       \
-    do {                                                                       \
-        cafe_print("• " message "\n");                                         \
-        ++cafe_pending;                                                        \
-    } while (0);
+    cafe_term("\033[1;36m");                                                   \
+    cafe_print("• " message "\n");                                             \
+    cafe_term("\033[0m");                                                      \
+    ++cafe_pending;
 
 #define BeforeEach(block)                                                      \
     if (setjmp(cafe_be_hooks[cafe_be_num_hooks[cafe_level]++]) != 0) {         \
@@ -161,16 +178,22 @@ static char *cafe_helper;
         } while (0);                                                           \
         printf("\n");                                                          \
         cafe_dtime = cafe_time_ms() - cafe_dtime;                              \
-        cafe_print("%d tests (%.0fms)\n",                                      \
+        cafe_print("Results after %d tests (%.0fms)\n",                        \
                    cafe_passing + cafe_pending + cafe_failing, cafe_dtime);    \
         if (cafe_passing) {                                                    \
+            cafe_term("\033[1;32m");                                           \
             cafe_print("✓ %d passing\n", cafe_passing);                        \
+            cafe_term("\033[0m");                                              \
         }                                                                      \
         if (cafe_pending) {                                                    \
+            cafe_term("\033[1;36m");                                           \
             cafe_print("• %d pending\n", cafe_pending);                        \
+            cafe_term("\033[0m");                                              \
         }                                                                      \
         if (cafe_failing) {                                                    \
+            cafe_term("\033[1;31m");                                           \
             cafe_print("✗ %d failing\n", cafe_failing);                        \
+            cafe_term("\033[0m");                                              \
         }                                                                      \
         printf("\n");                                                          \
         return cafe_failing;                                                   \
