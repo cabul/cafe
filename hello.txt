@@ -1,0 +1,14 @@
+
+  Hello module
+    add_five()
+      ✗ should work with positive numbers
+        Assertion 'add_five(4) == 8' failed
+      ✓ should work with negative numbers
+      • should do magic
+
+  Results after 3 tests (0ms)
+  ✓ 1 passing
+  • 1 pending
+  ✗ 1 failing
+
+Makefile:13: recipe for target 'test/hello' failed
