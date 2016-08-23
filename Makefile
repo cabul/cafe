@@ -9,7 +9,7 @@ build/%: src/%.c test/%.c
 	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -Itest -Isrc -o $@ $^
 
-test/%: build/%
+test/%: build/% test/cafe.h
 	@$<
 
 

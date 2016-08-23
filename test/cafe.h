@@ -26,7 +26,6 @@ static double cafe_time_ms() {
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
 
-static jmp_buf cafe_return;
 static jmp_buf cafe_be_hooks[CAFE_MAX_HOOKS];
 static jmp_buf cafe_ae_hooks[CAFE_MAX_HOOKS];
 
@@ -41,8 +40,14 @@ static int cafe_b_hooks_done[CAFE_MAX_LEVELS];
 static int cafe_a_num_hooks[CAFE_MAX_LEVELS];
 
 static char *cafe_helper;
+static jmp_buf cafe_return;
 
 void cafe_main(int argc, char **argv);
+
+#define cafe_counter_impl(idx) cafe_counter_##idx
+#define cafe_counter(idx) cafe_counter_impl(idx)
+#define cafe_loop_impl(idx) cafe_loop_##idx
+#define cafe_loop(idx) cafe_loop_impl(idx)
 
 #define cafe_print(...)                                                        \
     do {                                                                       \
@@ -52,10 +57,15 @@ void cafe_main(int argc, char **argv);
 
 #define Assert(cond)                                                           \
     if (!(cond)) {                                                             \
-        cafe_status = -1;                                                      \
+        cafe_status = 1;                                                       \
         cafe_helper = #cond;                                                   \
         break;                                                                 \
     }
+
+#define Error(message)                                                         \
+    cafe_status = -1;                                                          \
+    cafe_helper = message;                                                     \
+    break;
 
 #define Describe(message)                                                      \
     cafe_print(message "\n");                                                  \
@@ -63,9 +73,9 @@ void cafe_main(int argc, char **argv);
     cafe_ae_num_hooks[cafe_level + 1] = cafe_ae_num_hooks[cafe_level];         \
     ++cafe_level;                                                              \
     cafe_b_hooks_done[cafe_level] = 0;                                         \
-    jmp_buf cafe_loop_##__LINE__;                                              \
-    int cafe_counter_##__LINE__ = 0;                                           \
-    if (setjmp(cafe_loop_##__LINE__) != 0) {                                   \
+    jmp_buf cafe_loop(__LINE__);                                               \
+    int cafe_counter(__LINE__) = 0;                                            \
+    if (setjmp(cafe_loop(__LINE__)) != 0) {                                    \
         if (cafe_b_hooks_done[cafe_level]) {                                   \
             for (int cafe_i = cafe_a_num_hooks[cafe_level] - 1; cafe_i >= 0;   \
                  --cafe_i) {                                                   \
@@ -77,11 +87,11 @@ void cafe_main(int argc, char **argv);
         --cafe_level;                                                          \
     } else                                                                     \
         while (1)                                                              \
-            if (cafe_counter##__LINE__++) {                                    \
-                longjmp(cafe_loop_##__LINE__);                                 \
+            if (cafe_counter(__LINE__)++) {                                    \
+                longjmp(cafe_loop(__LINE__), 1);                               \
             } else
 
-#define It(message, block)                                                     \
+#define It(message)                                                            \
     for (int cafe_i = 0; cafe_i <= cafe_level; ++cafe_i) {                     \
         if (cafe_b_hooks_done[cafe_i] == 0) {                                  \
             for (int cafe_j = 0; cafe_j < cafe_b_num_hooks[cafe_i];            \
@@ -99,63 +109,93 @@ void cafe_main(int argc, char **argv);
         }                                                                      \
     }                                                                          \
     cafe_status = 0;                                                           \
-    do {                                                                       \
-        block                                                                  \
-    } while (0);                                                               \
-    if (cafe_status != 0) {                                                    \
-        cafe_print("✗ " message "\n");                                         \
-        ++cafe_failing;                                                        \
-        ++cafe_level;                                                          \
-        cafe_print("Assertion '%s' failed\n", cafe_helper);                    \
-        --cafe_level;                                                          \
-    } else {                                                                   \
-        cafe_print("✓ " message "\n");                                         \
-        ++cafe_passing;                                                        \
-    }                                                                          \
-    for (int cafe_i = cafe_ae_num_hooks[cafe_level] - 1; cafe_i >= 0;          \
-         --cafe_i) {                                                           \
-        if (setjmp(cafe_return) == 0) {                                        \
-            longjmp(cafe_ae_hooks[cafe_i], 1);                                 \
+    jmp_buf cafe_loop(__LINE__);                                               \
+    int cafe_counter(__LINE__) = 0;                                            \
+    if (setjmp(cafe_loop(__LINE__)) != 0) {                                    \
+        if (cafe_status != 0) {                                                \
+            cafe_print("✗ " message "\n");                                     \
+            ++cafe_failing;                                                    \
+            ++cafe_level;                                                      \
+            if (cafe_status > 0) {                                             \
+                cafe_print("Assertion '%s' failed\n", cafe_helper);            \
+            } else {                                                           \
+                cafe_print("%s\n", cafe_helper);                               \
+            }                                                                  \
+            --cafe_level;                                                      \
+        } else {                                                               \
+            cafe_print("✓ " message "\n");                                     \
+            ++cafe_passing;                                                    \
         }                                                                      \
-    }
+        for (int cafe_i = cafe_ae_num_hooks[cafe_level] - 1; cafe_i >= 0;      \
+             --cafe_i) {                                                       \
+            if (setjmp(cafe_return) == 0) {                                    \
+                longjmp(cafe_ae_hooks[cafe_i], 1);                             \
+            }                                                                  \
+        }                                                                      \
+    } else                                                                     \
+        while (1)                                                              \
+            if (cafe_counter(__LINE__)) {                                      \
+                longjmp(cafe_loop(__LINE__), 1);                               \
+            } else                                                             \
+                while (cafe_counter(__LINE__)++ == 0)
 
 #define Pending(message)                                                       \
     cafe_print("• " message "\n");                                             \
     ++cafe_pending;
 
-#define BeforeEach(block)                                                      \
-    if (setjmp(cafe_be_hooks[cafe_be_num_hooks[cafe_level]++]) != 0) {         \
-        do {                                                                   \
-            block                                                              \
-        } while (0);                                                           \
+#define BeforeEach                                                             \
+    jmp_buf cafe_loop(__LINE__);                                               \
+    int cafe_counter(__LINE__) = 0;                                            \
+    if (setjmp(cafe_be_hooks[cafe_be_num_hooks[cafe_level]++]) == 0) {         \
+    } else if (setjmp(cafe_loop(__LINE__)) != 0) {                             \
+        cafe_counter(__LINE__) = 0;                                            \
         longjmp(cafe_return, 1);                                               \
-    }
+    } else                                                                     \
+        while (1)                                                              \
+            if (cafe_counter(__LINE__)++) {                                    \
+                longjmp(cafe_loop(__LINE__), 1);                               \
+            } else
 
-#define AfterEach(block)                                                       \
-    if (setjmp(cafe_ae_hooks[cafe_ae_num_hooks[cafe_level]++]) != 0) {         \
-        do {                                                                   \
-            block                                                              \
-        } while (0);                                                           \
+#define AfterEach                                                              \
+    jmp_buf cafe_loop(__LINE__);                                               \
+    int cafe_counter(__LINE__) = 0;                                            \
+    if (setjmp(cafe_ae_hooks[cafe_ae_num_hooks[cafe_level]++]) == 0) {         \
+    } else if (setjmp(cafe_loop(__LINE__)) != 0) {                             \
+        cafe_counter(__LINE__) = 0;                                            \
         longjmp(cafe_return, 1);                                               \
-    }
+    } else                                                                     \
+        while (1)                                                              \
+            if (cafe_counter(__LINE__)++) {                                    \
+                longjmp(cafe_loop(__LINE__), 1);                               \
+            } else
 
-#define Before(block)                                                          \
-    if (setjmp(cafe_b_hooks[cafe_level][cafe_b_num_hooks[cafe_level]++]) !=    \
+#define Before                                                                 \
+    jmp_buf cafe_loop(__LINE__);                                               \
+    int cafe_counter(__LINE__) = 0;                                            \
+    if (setjmp(cafe_b_hooks[cafe_level][cafe_b_num_hooks[cafe_level]++]) ==    \
         0) {                                                                   \
-        do {                                                                   \
-            block                                                              \
-        } while (0);                                                           \
+    } else if (setjmp(cafe_loop(__LINE__)) != 0) {                             \
+        cafe_counter(__LINE__) = 0;                                            \
         longjmp(cafe_return, 1);                                               \
-    }
+    } else                                                                     \
+        while (1)                                                              \
+            if (cafe_counter(__LINE__)++) {                                    \
+                longjmp(cafe_loop(__LINE__), 1);                               \
+            } else
 
-#define After(block)                                                           \
-    if (setjmp(cafe_a_hooks[cafe_level][cafe_a_num_hooks[cafe_level]++]) !=    \
+#define After                                                                  \
+    jmp_buf cafe_loop(__LINE__);                                               \
+    int cafe_counter(__LINE__) = 0;                                            \
+    if (setjmp(cafe_a_hooks[cafe_level][cafe_a_num_hooks[cafe_level]++]) ==    \
         0) {                                                                   \
-        do {                                                                   \
-            block                                                              \
-        } while (0);                                                           \
+    } else if (setjmp(cafe_loop(__LINE__)) != 0) {                             \
+        cafe_counter(__LINE__) = 0;                                            \
         longjmp(cafe_return, 1);                                               \
-    }
+    } else                                                                     \
+        while (1)                                                              \
+            if (cafe_counter(__LINE__)++) {                                    \
+                longjmp(cafe_loop(__LINE__), 1);                               \
+            } else
 
 #define Cafe                                                                   \
     int main(int argc, char **argv) {                                          \
