@@ -2,7 +2,6 @@
 
 #include <setjmp.h>
 #include <stdio.h>
-#include <string.h>
 #include <sys/time.h>
 
 #ifndef CAFE_MAX_HOOKS
@@ -15,7 +14,7 @@
 
 static int cafe_status = 0;
 static int cafe_level = 0;
-static double cafe_dtime;
+static int cafe_spaces = 2;
 
 static int cafe_passing = 0;
 static int cafe_failing = 0;
@@ -37,22 +36,19 @@ static int cafe_a_num_hooks[CAFE_MAX_LEVELS];
 static char *cafe_helper;
 static jmp_buf cafe_return;
 
-static char *cafe_info[CAFE_MAX_LEVELS + 1];
-
 void cafe_main(int argc, char **argv);
 
 void cafe_r_enter_default();
 void cafe_r_exit_default();
 void cafe_r_describe_default();
 void cafe_r_test_default();
-void cafe_r_silent();
-void cafe_r_exit_minimal();
 
 typedef void (*cafe_reporter)();
-static cafe_reporter cafe_r_enter = cafe_r_enter_default;
-static cafe_reporter cafe_r_exit = cafe_r_exit_default;
-static cafe_reporter cafe_r_describe = cafe_r_describe_default;
-static cafe_reporter cafe_r_test = cafe_r_test_default;
+static cafe_reporter cafe_r_enter;
+static cafe_reporter cafe_r_exit;
+static cafe_reporter cafe_r_describe;
+static cafe_reporter cafe_r_it;
+static cafe_reporter cafe_r_pending;
 
 static double cafe_time_ms() {
     struct timeval tv;
@@ -60,36 +56,31 @@ static double cafe_time_ms() {
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
 
-#define CAFE_REPORT(var, name)                                                 \
-    if (strcmp(#name, var) == 0) {                                             \
-        cafe_r_enter = cafe_r_enter_##name;                                    \
-        cafe_r_exit = cafe_r_exit_##name;                                      \
-        cafe_r_describe = cafe_r_describe_##name;                              \
-        cafe_r_test = cafe_r_test_##name;                                      \
-    } else
-
 #define cafe_counter_impl(idx) cafe_counter_##idx
 #define cafe_counter(idx) cafe_counter_impl(idx)
 #define cafe_loop_impl(idx) cafe_loop_##idx
 #define cafe_loop(idx) cafe_loop_impl(idx)
 
-#define cafe_indent(spaces) printf("%*s", spaces, "")
+#define cafe_print(...)                                                        \
+    do {                                                                       \
+        printf("%*s", cafe_level *cafe_spaces + cafe_spaces, "");              \
+        printf(__VA_ARGS__);                                                   \
+    } while (0)
 
 #define Assert(cond)                                                           \
     if (!(cond)) {                                                             \
-        cafe_status = -1;                                                      \
+        cafe_status = 1;                                                       \
         cafe_helper = #cond;                                                   \
         break;                                                                 \
     }
 
 #define Error(message)                                                         \
-    cafe_status = -2;                                                          \
+    cafe_status = 2;                                                           \
     cafe_helper = message;                                                     \
     break;
 
 #define Describe(message)                                                      \
-    cafe_info[cafe_level] = message;                                           \
-    cafe_r_describe();                                                         \
+    cafe_print(message "\n");                                                  \
     cafe_be_num_hooks[cafe_level + 1] = cafe_be_num_hooks[cafe_level];         \
     cafe_ae_num_hooks[cafe_level + 1] = cafe_ae_num_hooks[cafe_level];         \
     ++cafe_level;                                                              \
@@ -130,16 +121,24 @@ static double cafe_time_ms() {
         }                                                                      \
     }                                                                          \
     cafe_status = 0;                                                           \
-    cafe_info[cafe_level] = message;                                           \
     jmp_buf cafe_loop(__LINE__);                                               \
     int cafe_counter(__LINE__) = 0;                                            \
     if (setjmp(cafe_loop(__LINE__)) != 0) {                                    \
-        if (cafe_status == 0) {                                                \
-            ++cafe_passing;                                                    \
-        } else {                                                               \
+        if (cafe_status != 0) {                                                \
+            cafe_print("✗ " message "\n");                                     \
             ++cafe_failing;                                                    \
+            ++cafe_level;                                                      \
+            if (cafe_status == 1) {                                            \
+                cafe_print("# Failed '%s'\n", cafe_helper);                    \
+            } else {                                                           \
+                cafe_print("# %s\n", cafe_helper);                             \
+            }                                                                  \
+            cafe_print("# in %s at line %d\n", __FILE__, __LINE__);            \
+            --cafe_level;                                                      \
+        } else {                                                               \
+            cafe_print("✓ " message "\n");                                     \
+            ++cafe_passing;                                                    \
         }                                                                      \
-        cafe_r_test();                                                         \
         for (int cafe_i = cafe_ae_num_hooks[cafe_level] - 1; cafe_i >= 0;      \
              --cafe_i) {                                                       \
             if (setjmp(cafe_return) == 0) {                                    \
@@ -154,9 +153,8 @@ static double cafe_time_ms() {
                 while (cafe_counter(__LINE__)++ == 0)
 
 #define Pending(message)                                                       \
-    cafe_status = 1;                                                           \
-    cafe_info[cafe_level] = message;                                           \
-    cafe_r_test();                                                             \
+    cafe_status = -1; \
+    cafe_print("• " message "\n");                                             \
     ++cafe_pending;
 
 #define BeforeEach                                                             \
@@ -215,96 +213,24 @@ static double cafe_time_ms() {
 
 #define Cafe                                                                   \
     int main(int argc, char **argv) {                                          \
-        if (argc > 1) {                                                        \
-            if (argv[1][0] == '+') {                                           \
-                char *reporter = argv[1] + 1;                                  \
-                if (strcmp(reporter, "minimal") == 0) {                        \
-                    cafe_r_enter = cafe_r_silent;                              \
-                    cafe_r_exit = cafe_r_exit_minimal;                         \
-                    cafe_r_describe = cafe_r_silent;                           \
-                    cafe_r_test = cafe_r_silent;                               \
-                } else if (strcmp(reporter, "silent") == 0) {                  \
-                    cafe_r_enter = cafe_r_silent;                              \
-                    cafe_r_exit = cafe_r_silent;                               \
-                    cafe_r_describe = cafe_r_silent;                           \
-                    cafe_r_test = cafe_r_silent;                               \
-                } else {                                                       \
-                    fprintf(stderr, "cafe: Unknown option: '%s'\n",          \
-                            reporter);                                         \
-                    return -1;                                                 \
-                }                                                              \
-            }                                                                  \
-        }                                                                      \
-        cafe_r_enter();                                                        \
-        cafe_dtime = cafe_time_ms();                                           \
+        printf("\n");                                                          \
+        double cafe_dtime = cafe_time_ms();                                    \
         cafe_main(argc, argv);                                                 \
+        printf("\n");                                                          \
         cafe_dtime = cafe_time_ms() - cafe_dtime;                              \
-        cafe_r_exit();                                                         \
+        cafe_print("Results after %d tests (%.0fms)\n",                        \
+                   cafe_passing + cafe_pending + cafe_failing, cafe_dtime);    \
+        if (cafe_passing) {                                                    \
+            cafe_print("✓ %d passing\n", cafe_passing);                        \
+        }                                                                      \
+        if (cafe_pending) {                                                    \
+            cafe_print("• %d pending\n", cafe_pending);                        \
+        }                                                                      \
+        if (cafe_failing) {                                                    \
+            cafe_print("✗ %d failing\n", cafe_failing);                        \
+        }                                                                      \
+        printf("\n");                                                          \
         return cafe_failing;                                                   \
     }                                                                          \
                                                                                \
     void cafe_main(int argc, char **argv)
-
-void cafe_r_silent() {}
-
-void cafe_r_enter_default() { printf("\n"); }
-
-void cafe_r_exit_default() {
-    printf("\n");
-    cafe_indent(2);
-    printf("Results after %d tests (%.0fms)\n",
-           cafe_passing + cafe_pending + cafe_failing, cafe_dtime);
-    if (cafe_passing) {
-        cafe_indent(2);
-        printf("✓ %d passing\n", cafe_passing);
-    }
-    if (cafe_pending) {
-        cafe_indent(2);
-        printf("• %d pending\n", cafe_pending);
-    }
-    if (cafe_failing) {
-        cafe_indent(2);
-        printf("✗ %d failing\n", cafe_failing);
-    }
-    printf("\n");
-}
-
-void cafe_r_describe_default() {
-    cafe_indent(2 + cafe_level * 2);
-    printf("%s\n", cafe_info[cafe_level]);
-}
-
-void cafe_r_test_default() {
-    cafe_indent(2 + cafe_level * 2);
-    switch (cafe_status) {
-    case 1:
-        printf("• %s\n", cafe_info[cafe_level]);
-        break;
-    case 0:
-        printf("✓ %s\n", cafe_info[cafe_level]);
-        break;
-    default:
-        printf("✗ %s\n", cafe_info[cafe_level]);
-        cafe_indent(4 + cafe_level * 2);
-        if (cafe_status == -1) {
-            printf("Failed '%s'\n", cafe_helper);
-        } else {
-            printf("%s\n", cafe_helper);
-        }
-        break;
-    }
-}
-
-void cafe_r_exit_minimal() {
-    printf("%d tests (%.0fms)\n", cafe_passing + cafe_pending + cafe_failing,
-           cafe_dtime);
-    if (cafe_passing) {
-        printf("%d passing\n", cafe_passing);
-    }
-    if (cafe_pending) {
-        printf("%d pending\n", cafe_pending);
-    }
-    if (cafe_failing) {
-        printf("%d failing\n", cafe_failing);
-    }
-}

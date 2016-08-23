@@ -10,7 +10,7 @@ build/%: src/%.c test/%.c
 	$(CC) $(CFLAGS) -Itest -Isrc -o $@ $^
 
 test/%: build/% test/cafe.h
-	@$<
+	@$< $(ARGS)
 
 
 clean:

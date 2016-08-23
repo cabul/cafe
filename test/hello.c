@@ -6,12 +6,10 @@ Cafe {
         Describe("add_five()") {
             It("should work with positive numbers") { Assert(add_five(4) == 9) }
             It("should work with negative numbers") {
-                Assert(add_five(-3) == 2)
+                Assert(add_five(-3) == 2);
             }
-            Pending("should do magic")
-            It("should be full of bugs") {
-                Error("This line always failes")
-            }
+            It("should be full of bugs") { Error("This line always failes") }
+            Pending("should do magic") {}
         }
     }
 }
