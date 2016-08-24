@@ -1,4 +1,4 @@
-#include "hello.h"
+#include "../src/hello.h"
 #include "cafe.h"
 
 Cafe {
@@ -11,7 +11,7 @@ Cafe {
                 Assert(add_five(-3) == 2)
             }
             It("should be full of bugs") { Error("This line always failes") }
-            Pending("should do magic") {}
+            It("should do magic") {}
         }
     }
 }
