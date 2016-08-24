@@ -117,10 +117,11 @@ void cafe_main(int argc, char **argv);
             ++cafe_failing;                                                    \
             ++cafe_level;                                                      \
             if (cafe_status > 0) {                                             \
-                cafe_print("Assertion '%s' failed\n", cafe_helper);            \
+                cafe_print("» Assertion '%s' failed\n", cafe_helper);          \
             } else {                                                           \
-                cafe_print("%s\n", cafe_helper);                               \
+                cafe_print("» %s\n", cafe_helper);                             \
             }                                                                  \
+            cafe_print("» in %s at line %d\n", __FILE__, __LINE__);            \
             --cafe_level;                                                      \
         } else {                                                               \
             cafe_print("✓ " message "\n");                                     \
