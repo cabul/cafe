@@ -3,10 +3,10 @@ CFLAGS = -Wall -pedantic -std=gnu99
 
 .PHONY: all clean
 
-all: test/hello
+all: test/calc
 
-test/%: src/%.c test/%.c
-	$(CC) $(CFLAGS) $^ -o runtest
+test/%: test/%.c src/cafe.c
+	$(CC) $(CFLAGS) -o runtest $^
 	./runtest $(ARGS)
 
 
