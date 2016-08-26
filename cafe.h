@@ -3,6 +3,7 @@
 #include <setjmp.h>
 #include <stdio.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #ifndef CAFE_MAX_LEVELS
 #define CAFE_MAX_LEVELS 4
@@ -34,6 +35,19 @@ static int cafe_a_set;
 
 static char *cafe_failure;
 static jmp_buf cafe_return;
+static int cafe_colors;
+
+#define CAFE_SYM(COL, SYM) (cafe_colors ? COL SYM "\033[0m" : SYM)
+
+#ifdef CAFE_ASCII
+#define CAFE_SYM_PASSING CAFE_SYM("\033[1;32m", "+")
+#define CAFE_SYM_PENDING CAFE_SYM("\033[1;36m", "o")
+#define CAFE_SYM_FAILING CAFE_SYM("\033[1;31m", "-")
+#else
+#define CAFE_SYM_PASSING CAFE_SYM("\033[1;32m", "✔")
+#define CAFE_SYM_PENDING CAFE_SYM("\033[1;36m", "∙")
+#define CAFE_SYM_FAILING CAFE_SYM("\033[1;31m", "✘")
+#endif
 
 #define CAFE_GOTO(HOOK)                                                        \
     if (setjmp(cafe_return) == 0) {                                            \
@@ -43,12 +57,12 @@ static jmp_buf cafe_return;
 #define CAFE_JMP(CNT) cafe_jmp_##CNT
 #define CAFE_FLAG(CNT) cafe_flag_##CNT
 
-#define CAFE_DO(CNT, pre, post)                                                \
+#define CAFE_DO(CNT, PRE, POST)                                                \
     jmp_buf CAFE_JMP(CNT);                                                     \
     int CAFE_FLAG(CNT) = 0;                                                    \
-    pre if (setjmp(CAFE_JMP(CNT))) {                                           \
+    PRE if (setjmp(CAFE_JMP(CNT))) {                                           \
         CAFE_FLAG(CNT) = 0;                                                    \
-        post                                                                   \
+        POST                                                                   \
     }                                                                          \
     else while (1) if (CAFE_FLAG(CNT)) {                                       \
         longjmp(CAFE_JMP(CNT), 1);                                             \
@@ -105,19 +119,17 @@ static jmp_buf cafe_return;
             switch (cafe_status) {                                             \
                 case CAFE_PASSING:                                             \
                     ++cafe_passing;                                            \
-                    CAFE_PRINT("✓ %s\n", message);                             \
+                    CAFE_PRINT("%s %s\n", CAFE_SYM_PASSING, message);          \
                     break;                                                     \
                 case CAFE_PENDING:                                             \
-                    CAFE_PRINT("• %s\n", message);                             \
                     ++cafe_pending;                                            \
+                    CAFE_PRINT("%s %s\n", CAFE_SYM_PENDING, message);          \
                     break;                                                     \
                 default:                                                       \
-                    CAFE_PRINT("✗ %s\n", message);                             \
                     ++cafe_failing;                                            \
-                    ++cafe_level;                                              \
-                    CAFE_PRINT("» %s\n", cafe_failure);                        \
-                    CAFE_PRINT("» in %s at line %d\n", __FILE__, __LINE__);    \
-                    --cafe_level;                                              \
+                    CAFE_PRINT("%s %s\n", CAFE_SYM_FAILING, message);          \
+                    CAFE_PRINT("  » %s\n", cafe_failure);                      \
+                    CAFE_PRINT("  » in %s at line %d\n", __FILE__, __LINE__);  \
             } for (int i = cafe_level; i >= 0; --i) {                          \
                 if (cafe_ae_set & (1 << i)) {                                  \
                     CAFE_GOTO(cafe_ae_hooks[i])                                \
@@ -140,21 +152,22 @@ static double cafe_time_ms() {
 void cafe_main(int argc, char **argv);
 
 int main(int argc, char **argv) {
+    cafe_colors = isatty(fileno(stdout));
     printf("\n");
     double cafe_dtime = cafe_time_ms();
     cafe_main(argc, argv);
     printf("\n");
     cafe_dtime = cafe_time_ms() - cafe_dtime;
-    CAFE_PRINT("Results after %d tests (%.0fms)\n",
+    CAFE_PRINT("Results after %d tests (%.0f ms)\n",
                cafe_passing + cafe_pending + cafe_failing, cafe_dtime);
     if (cafe_passing) {
-        CAFE_PRINT("✓ %d passing\n", cafe_passing);
+        CAFE_PRINT("%s %d passing\n", CAFE_SYM_PASSING, cafe_passing);
     }
     if (cafe_pending) {
-        CAFE_PRINT("• %d pending\n", cafe_pending);
+        CAFE_PRINT("%s %d pending\n", CAFE_SYM_PENDING, cafe_pending);
     }
     if (cafe_failing) {
-        CAFE_PRINT("✗ %d failing\n", cafe_failing);
+        CAFE_PRINT("%s %d failing\n", CAFE_SYM_FAILING, cafe_failing);
     }
     printf("\n");
     return cafe_failing;
