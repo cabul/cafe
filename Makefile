@@ -5,7 +5,7 @@ CFLAGS = -Wall -pedantic -std=gnu99
 
 all: test/calc
 
-test/%: test/%.c src/cafe.c
+test/%: test/%.c
 	$(CC) $(CFLAGS) -o runtest $^
 	./runtest $(ARGS)
 

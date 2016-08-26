@@ -1,4 +1,4 @@
-#include "../src/cafe.h"
+#include "../cafe.h"
 
 int add(int a, int b) { return a + b; }
 
@@ -18,3 +18,4 @@ Cafe {
         }
     }
 }
+

@@ -65,6 +65,7 @@ jmp_buf *cafe_return() { return &return_hook; }
 void cafe_begin_suite(char *info) {
     ++level;
     printf("%*s%s\n", level * 2, "", info);
+    level_set &= ~(1<<level);
 }
 
 void cafe_end_suite(char *info) {
@@ -76,9 +77,10 @@ void cafe_end_suite(char *info) {
 
 void cafe_begin_test(char *info) {
     for (int i = 0; i < level; ++i) {
-        if (before_set & (1 << i)) {
-            CAFE_GOTO(before_hooks[i])
-            before_set &= ~(1 << i);
+        if ((level_set & (1<<i)) == 0) {
+            if (before_set & (1<<i)) {
+                CAFE_GOTO(before_hooks[i])
+            }
         }
         level_set |= 1 << i;
     }
