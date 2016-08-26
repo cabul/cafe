@@ -3,16 +3,13 @@ CFLAGS = -Wall -pedantic -std=gnu99
 
 .PHONY: all clean
 
-all:
+all: test/calc
 
-build/%: src/%.c test/%.c
-	@mkdir -p $(@D)
-	$(CC) $(CFLAGS) -Itest -Isrc -o $@ $^
-
-test/%: build/% test/cafe.h
-	@$< $(ARGS)
+test/%: test/%.c
+	$(CC) $(CFLAGS) -o runtest $^
+	./runtest $(ARGS)
 
 
 clean:
-	rm -rf build
+	rm -rf runtest
 
