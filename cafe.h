@@ -1,5 +1,6 @@
 #pragma once
 
+#define _GNU_SOURCE
 #include <setjmp.h>
 #include <stdio.h>
 #include <sys/time.h>
@@ -141,7 +142,8 @@ static int cafe_colors;
 #define Before CAFE_HOOK(__LINE__, b)
 #define After CAFE_HOOK(__LINE__, a)
 
-#define Cafe void cafe_main(int argc, char **argv)
+#define Cafe(ID) void cafe_run_##ID(int argc, char **argv)
+#define Run(ID) cafe_run_##ID(argc, argv)
 
 static double cafe_time_ms() {
     struct timeval tv;
@@ -149,13 +151,13 @@ static double cafe_time_ms() {
     return tv.tv_sec * 1e3 + tv.tv_usec * 1e-3;
 }
 
-void cafe_main(int argc, char **argv);
+void cafe_run_main(int argc, char **argv);
 
 int main(int argc, char **argv) {
     cafe_colors = isatty(fileno(stdout));
     printf("\n");
     double cafe_dtime = cafe_time_ms();
-    cafe_main(argc, argv);
+    cafe_run_main(argc, argv);
     printf("\n");
     cafe_dtime = cafe_time_ms() - cafe_dtime;
     CAFE_PRINT("Results after %d tests (%.0f ms)\n",
